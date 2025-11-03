@@ -4,6 +4,8 @@ import { TruthTable } from "@/components/TruthTable";
 import { SimplificationResult } from "@/components/SimplificationResult";
 import { parseExpression, generateTruthTable, simplifyExpression } from "@/lib/booleanLogic";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { RotateCcw } from "lucide-react";
 
 const Index = () => {
   const [variables, setVariables] = useState<string[]>([]);
@@ -42,6 +44,15 @@ const Index = () => {
     }
   };
 
+  const handleReset = () => {
+    setVariables([]);
+    setTruthTable([]);
+    setOriginalExpression("");
+    setSimplifiedExpression("");
+    setShowResults(false);
+    toast.success("Reset complete!");
+  };
+
   return (
     <div className="min-h-screen bg-[var(--gradient-subtle)] py-8 px-4">
       <div className="max-w-7xl mx-auto space-y-8">
@@ -61,6 +72,17 @@ const Index = () => {
 
           {showResults && (
             <>
+              <div className="flex justify-end mb-4">
+                <Button
+                  variant="outline"
+                  onClick={handleReset}
+                  className="gap-2 border-primary/30 hover:bg-primary/10"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  Reset
+                </Button>
+              </div>
+              
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <TruthTable variables={variables} results={truthTable} />
                 <SimplificationResult
