@@ -2,7 +2,8 @@ import { useState } from "react";
 import { ExpressionInput } from "@/components/ExpressionInput";
 import { TruthTable } from "@/components/TruthTable";
 import { SimplificationResult } from "@/components/SimplificationResult";
-import { parseExpression, generateTruthTable, simplifyExpression } from "@/lib/booleanLogic";
+import { CircuitDiagram } from "@/components/CircuitDiagram";
+import { parseExpression, generateTruthTable, simplifyExpression, type ExpressionNode } from "@/lib/booleanLogic";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { RotateCcw } from "lucide-react";
@@ -12,6 +13,7 @@ const Index = () => {
   const [truthTable, setTruthTable] = useState<boolean[]>([]);
   const [originalExpression, setOriginalExpression] = useState("");
   const [simplifiedExpression, setSimplifiedExpression] = useState("");
+  const [ast, setAst] = useState<ExpressionNode | null>(null);
   const [showResults, setShowResults] = useState(false);
 
   const handleExpressionSubmit = (expression: string) => {
@@ -35,6 +37,7 @@ const Index = () => {
       setTruthTable(table);
       setOriginalExpression(expression);
       setSimplifiedExpression(simplified);
+      setAst(parsed.ast);
       setShowResults(true);
       
       toast.success("Expression evaluated successfully!");
@@ -49,6 +52,7 @@ const Index = () => {
     setTruthTable([]);
     setOriginalExpression("");
     setSimplifiedExpression("");
+    setAst(null);
     setShowResults(false);
     toast.success("Reset complete!");
   };
@@ -83,13 +87,17 @@ const Index = () => {
                 </Button>
               </div>
               
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <TruthTable variables={variables} results={truthTable} />
-                <SimplificationResult
-                  original={originalExpression}
-                  simplified={simplifiedExpression}
-                  method="Quine-McCluskey"
-                />
+              <div className="space-y-6">
+                {ast && <CircuitDiagram ast={ast} variables={variables} />}
+                
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <TruthTable variables={variables} results={truthTable} />
+                  <SimplificationResult
+                    original={originalExpression}
+                    simplified={simplifiedExpression}
+                    method="Quine-McCluskey"
+                  />
+                </div>
               </div>
             </>
           )}

@@ -1,8 +1,16 @@
 // Parse and evaluate Boolean expressions
 
+export interface ExpressionNode {
+  type: 'variable' | 'operator';
+  value: string;
+  left?: ExpressionNode;
+  right?: ExpressionNode;
+}
+
 export interface ParsedExpression {
   variables: string[];
   evaluate: (values: Map<string, boolean>) => boolean;
+  ast: ExpressionNode;
 }
 
 // Tokenize the expression
@@ -103,6 +111,40 @@ function evaluatePostfix(postfix: string[], values: Map<string, boolean>): boole
   return stack[0];
 }
 
+// Build Abstract Syntax Tree from postfix
+function buildAST(postfix: string[]): ExpressionNode {
+  const stack: ExpressionNode[] = [];
+  
+  for (const token of postfix) {
+    const operators = ['NOT', 'AND', 'OR', 'XOR', 'NAND', 'NOR'];
+    
+    if (operators.includes(token)) {
+      if (token === 'NOT') {
+        const operand = stack.pop()!;
+        stack.push({
+          type: 'operator',
+          value: token,
+          right: operand
+        });
+      } else {
+        const right = stack.pop()!;
+        const left = stack.pop()!;
+        stack.push({
+          type: 'operator',
+          value: token,
+          left,
+          right
+        });
+      }
+    } else {
+      // Variable
+      stack.push({ type: 'variable', value: token });
+    }
+  }
+  
+  return stack[0];
+}
+
 export function parseExpression(expression: string): ParsedExpression {
   const tokens = tokenize(expression);
   const postfix = infixToPostfix(tokens);
@@ -118,10 +160,12 @@ export function parseExpression(expression: string): ParsedExpression {
   }
   
   const variables = Array.from(variableSet).sort();
+  const ast = buildAST(postfix);
   
   return {
     variables,
-    evaluate: (values: Map<string, boolean>) => evaluatePostfix(postfix, values)
+    evaluate: (values: Map<string, boolean>) => evaluatePostfix(postfix, values),
+    ast
   };
 }
 
