@@ -189,10 +189,22 @@ export function generateTruthTable(parsed: ParsedExpression): boolean[] {
   return results;
 }
 
+export interface SimplificationStep {
+  title: string;
+  description: string;
+  data?: string[];
+}
+
+export interface SimplificationResult {
+  simplified: string;
+  steps: SimplificationStep[];
+}
+
 // Quine-McCluskey algorithm for simplification
-export function simplifyExpression(parsed: ParsedExpression, truthTable: boolean[]): string {
+export function simplifyExpression(parsed: ParsedExpression, truthTable: boolean[]): SimplificationResult {
   const { variables } = parsed;
   const numVars = variables.length;
+  const steps: SimplificationStep[] = [];
   
   // Get minterms (where output is 1)
   const minterms: number[] = [];
@@ -202,8 +214,14 @@ export function simplifyExpression(parsed: ParsedExpression, truthTable: boolean
     }
   }
   
-  if (minterms.length === 0) return "0";
-  if (minterms.length === truthTable.length) return "1";
+  steps.push({
+    title: "Step 1: Identify Minterms",
+    description: `Found ${minterms.length} minterms where the output is 1`,
+    data: minterms.map(m => `m${m} = ${m.toString(2).padStart(numVars, '0')}`)
+  });
+  
+  if (minterms.length === 0) return { simplified: "0", steps };
+  if (minterms.length === truthTable.length) return { simplified: "1", steps };
   
   // Convert to binary representation with tracking of original minterms
   type Implicant = {
@@ -217,9 +235,17 @@ export function simplifyExpression(parsed: ParsedExpression, truthTable: boolean
   }));
   
   const allPrimeImplicants: Implicant[] = [];
+  let iterationCount = 0;
+  
+  steps.push({
+    title: "Step 2: Initial Grouping",
+    description: "Group minterms by the number of 1s in their binary representation",
+    data: currentImplicants.map(imp => `${imp.binary} (${Array.from(imp.minterms).join(', ')})`)
+  });
   
   // Iteratively combine terms until no more combinations possible
   while (currentImplicants.length > 0) {
+    iterationCount++;
     // Group by number of 1s
     const groups: Map<number, Implicant[]> = new Map();
     for (const implicant of currentImplicants) {
@@ -276,12 +302,35 @@ export function simplifyExpression(parsed: ParsedExpression, truthTable: boolean
     
     // Add newly combined terms for next iteration
     nextImplicants.push(...Array.from(combinedMap.values()));
+    
+    if (nextImplicants.length > 0) {
+      steps.push({
+        title: `Step 2.${iterationCount}: Combining Terms`,
+        description: `Combined ${combined.size} terms into ${nextImplicants.length} new implicants`,
+        data: nextImplicants.map(imp => `${imp.binary} (covers: ${Array.from(imp.minterms).sort((a, b) => a - b).join(', ')})`)
+      });
+    }
+    
     currentImplicants = nextImplicants;
   }
   
+  steps.push({
+    title: "Step 3: Prime Implicants",
+    description: `Found ${allPrimeImplicants.length} prime implicants (terms that cannot be further combined)`,
+    data: allPrimeImplicants.map(pi => 
+      `${pi.binary} → ${convertImplicantToExpression(pi.binary, variables)} (covers: ${Array.from(pi.minterms).sort((a, b) => a - b).join(', ')})`
+    )
+  });
+  
   // If we have only one prime implicant, return it
   if (allPrimeImplicants.length === 1) {
-    return convertImplicantToExpression(allPrimeImplicants[0].binary, variables);
+    const simplified = convertImplicantToExpression(allPrimeImplicants[0].binary, variables);
+    steps.push({
+      title: "Final Result",
+      description: "Only one prime implicant found - this is the minimized expression",
+      data: [simplified]
+    });
+    return { simplified, steps };
   }
   
   // Find essential prime implicants using coverage table
@@ -298,6 +347,16 @@ export function simplifyExpression(parsed: ParsedExpression, truthTable: boolean
         essential.minterms.forEach(m => coveredMinterms.add(m));
       }
     }
+  }
+  
+  if (essentialPrimeImplicants.length > 0) {
+    steps.push({
+      title: "Step 4: Essential Prime Implicants",
+      description: `Selected ${essentialPrimeImplicants.length} essential prime implicants that uniquely cover certain minterms`,
+      data: essentialPrimeImplicants.map(epi => 
+        `${epi.binary} → ${convertImplicantToExpression(epi.binary, variables)}`
+      )
+    });
   }
   
   // Add remaining prime implicants to cover all minterms
@@ -330,12 +389,31 @@ export function simplifyExpression(parsed: ParsedExpression, truthTable: boolean
     }
   }
   
+  if (selectedImplicants.length > essentialPrimeImplicants.length) {
+    const additional = selectedImplicants.filter(si => !essentialPrimeImplicants.includes(si));
+    steps.push({
+      title: "Step 5: Additional Coverage",
+      description: `Added ${additional.length} more prime implicants to cover remaining minterms`,
+      data: additional.map(api => 
+        `${api.binary} → ${convertImplicantToExpression(api.binary, variables)}`
+      )
+    });
+  }
+  
   // Convert selected prime implicants to expression
   const terms = selectedImplicants.map(implicant => 
     convertImplicantToExpression(implicant.binary, variables)
   );
   
-  return terms.length === 1 ? terms[0] : terms.join(' OR ');
+  const simplified = terms.length === 1 ? terms[0] : terms.join(' OR ');
+  
+  steps.push({
+    title: "Final Result",
+    description: "Minimized Boolean expression in Sum of Products (SOP) form",
+    data: [simplified]
+  });
+  
+  return { simplified, steps };
 }
 
 function convertImplicantToExpression(binary: string, variables: string[]): string {

@@ -3,7 +3,7 @@ import { ExpressionInput } from "@/components/ExpressionInput";
 import { TruthTable } from "@/components/TruthTable";
 import { SimplificationResult } from "@/components/SimplificationResult";
 import { CircuitDiagram } from "@/components/CircuitDiagram";
-import { parseExpression, generateTruthTable, simplifyExpression, type ExpressionNode } from "@/lib/booleanLogic";
+import { parseExpression, generateTruthTable, simplifyExpression, type ExpressionNode, type SimplificationStep } from "@/lib/booleanLogic";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { RotateCcw } from "lucide-react";
@@ -13,6 +13,7 @@ const Index = () => {
   const [truthTable, setTruthTable] = useState<boolean[]>([]);
   const [originalExpression, setOriginalExpression] = useState("");
   const [simplifiedExpression, setSimplifiedExpression] = useState("");
+  const [simplificationSteps, setSimplificationSteps] = useState<SimplificationStep[]>([]);
   const [ast, setAst] = useState<ExpressionNode | null>(null);
   const [showResults, setShowResults] = useState(false);
 
@@ -31,12 +32,13 @@ const Index = () => {
       }
 
       const table = generateTruthTable(parsed);
-      const simplified = simplifyExpression(parsed, table);
+      const result = simplifyExpression(parsed, table);
 
       setVariables(parsed.variables);
       setTruthTable(table);
       setOriginalExpression(expression);
-      setSimplifiedExpression(simplified);
+      setSimplifiedExpression(result.simplified);
+      setSimplificationSteps(result.steps);
       setAst(parsed.ast);
       setShowResults(true);
       
@@ -52,6 +54,7 @@ const Index = () => {
     setTruthTable([]);
     setOriginalExpression("");
     setSimplifiedExpression("");
+    setSimplificationSteps([]);
     setAst(null);
     setShowResults(false);
     toast.success("Reset complete!");
@@ -96,6 +99,7 @@ const Index = () => {
                     original={originalExpression}
                     simplified={simplifiedExpression}
                     method="Quine-McCluskey"
+                    steps={simplificationSteps}
                   />
                 </div>
               </div>
