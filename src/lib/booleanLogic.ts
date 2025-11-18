@@ -205,90 +205,150 @@ export function simplifyExpression(parsed: ParsedExpression, truthTable: boolean
   if (minterms.length === 0) return "0";
   if (minterms.length === truthTable.length) return "1";
   
-  // Convert to binary representation
-  const binaryMinterms = minterms.map(m => {
-    return m.toString(2).padStart(numVars, '0');
-  });
+  // Convert to binary representation with tracking of original minterms
+  type Implicant = {
+    binary: string;
+    minterms: Set<number>;
+  };
   
-  // Group by number of 1s
-  const groups: Map<number, string[]> = new Map();
-  for (const binary of binaryMinterms) {
-    const ones = binary.split('').filter(b => b === '1').length;
-    if (!groups.has(ones)) groups.set(ones, []);
-    groups.get(ones)!.push(binary);
-  }
+  let currentImplicants: Implicant[] = minterms.map(m => ({
+    binary: m.toString(2).padStart(numVars, '0'),
+    minterms: new Set([m])
+  }));
   
-  // Combine terms
-  let primeImplicants = new Set<string>(binaryMinterms);
-  let changed = true;
+  const allPrimeImplicants: Implicant[] = [];
   
-  while (changed) {
-    changed = false;
-    const newImplicants = new Set<string>();
-    const used = new Set<string>();
+  // Iteratively combine terms until no more combinations possible
+  while (currentImplicants.length > 0) {
+    // Group by number of 1s
+    const groups: Map<number, Implicant[]> = new Map();
+    for (const implicant of currentImplicants) {
+      const ones = implicant.binary.split('').filter(b => b === '1').length;
+      if (!groups.has(ones)) groups.set(ones, []);
+      groups.get(ones)!.push(implicant);
+    }
+    
+    const nextImplicants: Implicant[] = [];
+    const combined = new Set<string>();
+    const combinedMap = new Map<string, Implicant>();
     
     const groupKeys = Array.from(groups.keys()).sort((a, b) => a - b);
     
+    // Try to combine adjacent groups
     for (let i = 0; i < groupKeys.length - 1; i++) {
       const group1 = groups.get(groupKeys[i]) || [];
       const group2 = groups.get(groupKeys[i + 1]) || [];
       
       for (const term1 of group1) {
         for (const term2 of group2) {
-          const diff = countDifferences(term1, term2);
-          if (diff === 1) {
-            const combined = combinTerms(term1, term2);
-            newImplicants.add(combined);
-            used.add(term1);
-            used.add(term2);
-            changed = true;
+          if (countDifferences(term1.binary, term2.binary) === 1) {
+            const combinedBinary = combinTerms(term1.binary, term2.binary);
+            combined.add(term1.binary);
+            combined.add(term2.binary);
+            
+            // Merge minterms from both terms
+            if (!combinedMap.has(combinedBinary)) {
+              const mergedMinterms = new Set([...term1.minterms, ...term2.minterms]);
+              combinedMap.set(combinedBinary, {
+                binary: combinedBinary,
+                minterms: mergedMinterms
+              });
+            } else {
+              const existing = combinedMap.get(combinedBinary)!;
+              term1.minterms.forEach(m => existing.minterms.add(m));
+              term2.minterms.forEach(m => existing.minterms.add(m));
+            }
           }
         }
       }
     }
     
-    // Keep unused terms as prime implicants
-    for (const [, terms] of groups) {
-      for (const term of terms) {
-        if (!used.has(term)) {
-          primeImplicants.add(term);
-        } else {
-          primeImplicants.delete(term);
+    // Terms that weren't combined are prime implicants
+    for (const implicant of currentImplicants) {
+      if (!combined.has(implicant.binary)) {
+        // Check if we already have this prime implicant
+        const exists = allPrimeImplicants.some(pi => pi.binary === implicant.binary);
+        if (!exists) {
+          allPrimeImplicants.push(implicant);
         }
       }
     }
     
-    // Add new combined terms
-    for (const term of newImplicants) {
-      primeImplicants.add(term);
-    }
-    
-    // Regroup for next iteration
-    groups.clear();
-    for (const term of newImplicants) {
-      const ones = term.split('').filter(b => b === '1').length;
-      if (!groups.has(ones)) groups.set(ones, []);
-      groups.get(ones)!.push(term);
-    }
+    // Add newly combined terms for next iteration
+    nextImplicants.push(...Array.from(combinedMap.values()));
+    currentImplicants = nextImplicants;
   }
   
-  // Convert prime implicants to expression
-  const terms: string[] = [];
-  for (const implicant of primeImplicants) {
-    const termParts: string[] = [];
-    for (let i = 0; i < implicant.length; i++) {
-      if (implicant[i] === '1') {
-        termParts.push(variables[i]);
-      } else if (implicant[i] === '0') {
-        termParts.push(`NOT ${variables[i]}`);
+  // If we have only one prime implicant, return it
+  if (allPrimeImplicants.length === 1) {
+    return convertImplicantToExpression(allPrimeImplicants[0].binary, variables);
+  }
+  
+  // Find essential prime implicants using coverage table
+  const essentialPrimeImplicants: Implicant[] = [];
+  const coveredMinterms = new Set<number>();
+  
+  // Find essential prime implicants (those that cover minterms no other implicant covers)
+  for (const minterm of minterms) {
+    const covering = allPrimeImplicants.filter(pi => pi.minterms.has(minterm));
+    if (covering.length === 1) {
+      const essential = covering[0];
+      if (!essentialPrimeImplicants.includes(essential)) {
+        essentialPrimeImplicants.push(essential);
+        essential.minterms.forEach(m => coveredMinterms.add(m));
       }
     }
-    if (termParts.length > 0) {
-      terms.push(termParts.length === 1 ? termParts[0] : `(${termParts.join(' AND ')})`);
+  }
+  
+  // Add remaining prime implicants to cover all minterms
+  const selectedImplicants = [...essentialPrimeImplicants];
+  const remainingMinterms = minterms.filter(m => !coveredMinterms.has(m));
+  
+  // Greedy selection: pick implicants that cover the most uncovered minterms
+  while (remainingMinterms.length > 0) {
+    let bestImplicant: Implicant | null = null;
+    let maxCoverage = 0;
+    
+    for (const implicant of allPrimeImplicants) {
+      if (selectedImplicants.includes(implicant)) continue;
+      
+      const coverage = remainingMinterms.filter(m => implicant.minterms.has(m)).length;
+      if (coverage > maxCoverage) {
+        maxCoverage = coverage;
+        bestImplicant = implicant;
+      }
+    }
+    
+    if (bestImplicant) {
+      selectedImplicants.push(bestImplicant);
+      bestImplicant.minterms.forEach(m => {
+        const idx = remainingMinterms.indexOf(m);
+        if (idx !== -1) remainingMinterms.splice(idx, 1);
+      });
+    } else {
+      break;
     }
   }
   
+  // Convert selected prime implicants to expression
+  const terms = selectedImplicants.map(implicant => 
+    convertImplicantToExpression(implicant.binary, variables)
+  );
+  
   return terms.length === 1 ? terms[0] : terms.join(' OR ');
+}
+
+function convertImplicantToExpression(binary: string, variables: string[]): string {
+  const termParts: string[] = [];
+  for (let i = 0; i < binary.length; i++) {
+    if (binary[i] === '1') {
+      termParts.push(variables[i]);
+    } else if (binary[i] === '0') {
+      termParts.push(`NOT ${variables[i]}`);
+    }
+  }
+  if (termParts.length === 0) return "1";
+  return termParts.length === 1 ? termParts[0] : `(${termParts.join(' AND ')})`;
 }
 
 function countDifferences(term1: string, term2: string): number {
