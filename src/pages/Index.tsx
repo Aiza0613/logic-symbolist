@@ -15,6 +15,7 @@ const Index = () => {
   const [simplifiedExpression, setSimplifiedExpression] = useState("");
   const [simplificationSteps, setSimplificationSteps] = useState<SimplificationStep[]>([]);
   const [ast, setAst] = useState<ExpressionNode | null>(null);
+  const [simplifiedAst, setSimplifiedAst] = useState<ExpressionNode | null>(null);
   const [showResults, setShowResults] = useState(false);
 
   const handleExpressionSubmit = (expression: string) => {
@@ -34,12 +35,23 @@ const Index = () => {
       const table = generateTruthTable(parsed);
       const result = simplifyExpression(parsed, table);
 
+      // Parse the simplified expression to get its AST
+      let simplifiedParsed: ExpressionNode | null = null;
+      try {
+        const simplifiedParse = parseExpression(result.simplified);
+        simplifiedParsed = simplifiedParse.ast;
+      } catch {
+        // If simplified expression can't be parsed (e.g., "0" or "1"), use null
+        simplifiedParsed = null;
+      }
+
       setVariables(parsed.variables);
       setTruthTable(table);
       setOriginalExpression(expression);
       setSimplifiedExpression(result.simplified);
       setSimplificationSteps(result.steps);
       setAst(parsed.ast);
+      setSimplifiedAst(simplifiedParsed);
       setShowResults(true);
       
       toast.success("Expression evaluated successfully!");
@@ -56,6 +68,7 @@ const Index = () => {
     setSimplifiedExpression("");
     setSimplificationSteps([]);
     setAst(null);
+    setSimplifiedAst(null);
     setShowResults(false);
     toast.success("Reset complete!");
   };
@@ -91,7 +104,20 @@ const Index = () => {
               </div>
               
               <div className="space-y-6">
-                {ast && <CircuitDiagram ast={ast} variables={variables} />}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {ast && (
+                    <div className="space-y-2">
+                      <h2 className="text-lg font-semibold text-foreground">Original Circuit</h2>
+                      <CircuitDiagram ast={ast} variables={variables} />
+                    </div>
+                  )}
+                  {simplifiedAst && (
+                    <div className="space-y-2">
+                      <h2 className="text-lg font-semibold text-foreground">Simplified Circuit</h2>
+                      <CircuitDiagram ast={simplifiedAst} variables={variables} />
+                    </div>
+                  )}
+                </div>
                 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <TruthTable variables={variables} results={truthTable} />
